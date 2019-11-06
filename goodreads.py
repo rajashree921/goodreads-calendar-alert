@@ -38,7 +38,7 @@ def main():
     #refer Goodreads api documentation for information on other parameters
     data = {'id': USER_ID,
             'shelf': 'to-read',
-            'sort': 'date_pub',
+            'sort': 'date_added',
             'order':'d', 'page': 1,
             'per_page': 30,
             'key': CLIENT_KEY}
