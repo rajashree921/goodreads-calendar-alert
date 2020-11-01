@@ -1,5 +1,6 @@
 var debug = false;
 var firstWeekOfMonth = false;
+var today = new Date();
 var ss = SpreadsheetApp.openById(
     "1dXbvJc9i1KoiMUaTNukCYX9DS8oGmyznnXsZe4-BFZM"
   ),
@@ -121,8 +122,7 @@ function getBooks(response) {
 }
 
 function main() {
-  var today = new Date(),
-    apiKey = "1LNBP3nLDvPJoY3trbJw1w",
+  var apiKey = "1LNBP3nLDvPJoY3trbJw1w",
     payload = {
       id: 7795126,
       shelf: "to-read",
