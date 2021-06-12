@@ -1,50 +1,59 @@
-var debug = false;
-var firstWeekOfMonth = false;
-var today = new Date();
-var ss = SpreadsheetApp.openById(
+let debug = false;
+let firstWeekOfMonth = false;
+let today = new Date();
+let ss = SpreadsheetApp.openById(
     "1dXbvJc9i1KoiMUaTNukCYX9DS8oGmyznnXsZe4-BFZM"
   ),
   sheet = ss.getSheets()[0];
 
 function fetchGoodreadsData(params) {
-  var apiUrl = "https://www.goodreads.com/review/list?v=2";
+  let apiUrl = "https://www.goodreads.com/review/list?v=2";
   return UrlFetchApp.fetch(apiUrl, params);
 }
 
 //should probably change this function's name
-function checkFutureRelease(book) {
-  var titleWithoutSeries = book.getChild("title_without_series").getText(),
-    title = book.getChild("title").getText(),
+function checkData(book) {
+  let title = book.getChild("title").getText(),
+    // titleWithoutSeries = book.getChild("title_without_series").getText(),
     author = book
       .getChild("authors")
       .getChild("author")
       .getChild("name")
       .getText(),
     link = book.getChild("link").getText();
-  // title = title.concat(" - ", author);
-  //check whether event already exists for the book
-  if (calendarEventNotExists(titleWithoutSeries)) {
+    // title = title.concat(" - ", author);
+    //check whether event already exists for the book
+    //if yes, then remove sheet entry if it exists
+  if (calendarEventExists(title)) removeSheetEntry(title);
+  else {
     //check whether publication date values are filled in
     if (book.getChild("publication_day").getText()) {
-      var pubDate = new Date(
+      let pubDate = new Date(
         book.getChild("publication_year").getText(),
         book.getChild("publication_month").getText() - 1,
         book.getChild("publication_day").getText()
       );
       //check whether book has a future release date
+      //check whether event already exists for the book
+      //if yes, then do nothing
+      //otherwise create calendar event and remove sheet entry if it exists
       //thought to remove pubDate future date check because all are future releases, but then remembered that I check recently added books as well
-      if (pubDate >= today) {
-        pubDate.setDate(pubDate.getDate() + 3);
-        createCalendarEvent(title.concat(" - ", author), pubDate, link);
+      if (pubDate >= today ) {
+          pubDate.setDate(pubDate.getDate() + 3);
+          createCalendarEvent(title.concat(" - ", author), pubDate, link);
       }
-    } else createSheetEntry(title, author, link);
-  } else removeSheetEntry(title);
+      
+    } else {        
+      //create sheet entry        
+      createSheetEntry(title, author, link);
+    }
+  }
 }
 
-function calendarEventNotExists(title) {
+function calendarEventExists(title) {
   if (title !== "Untitled") {
-    if (debug) Logger.log("Searching calendar for: %s", title);
-    var calendarId = "primary",
+  //  if (debug) Logger.log("Searching calendar for: %s", title);
+    let calendarId = "primary",
       optionalArgs = {
         timeMin: new Date().toISOString(),
         showDeleted: false,
@@ -52,60 +61,65 @@ function calendarEventNotExists(title) {
         q: title,
         orderBy: "startTime",
       };
-    var response = Calendar.Events.list(calendarId, optionalArgs);
-    var events = response.items;
+    let response = Calendar.Events.list(calendarId, optionalArgs);
+    let events = response.items;
     if (events.length > 0) {
       for (i = 0; i < events.length; i++) {
-        var event = events[i];
-        var when = event.start.date;
+        let event = events[i];
+        let when = event.start.date;
+        if (debug) Logger.log("Event exists - %s : %s", event.summary, when);
+        return true;
       }
-      if (debug) Logger.log("Event exists - %s : %s", event.summary, when);
-      return false;
     }
   }
-  return true;
+  if (debug) Logger.log("Event does not exist - %s", title);
+  return false;
 }
 
 function createCalendarEvent(title, pubDate, link) {
   CalendarApp.getDefaultCalendar().createAllDayEvent(title, pubDate, {
     location: link,
   });
-  if (debug) Logger.log("Event created: " + title + "\nDate: " + pubDate);
+  Logger.log("Event created: " + title + "\nDate: " + pubDate);
 }
 
 function removeSheetEntry(title) {
-  textFinder = ss.createTextFinder(title);
-  position = textFinder.findNext();
-  if (position != null) {
-    if (debug) Logger.log("Deleting Sheet entry for " + title);
-    sheet.deleteRow(position.getRow());
+  if (!title.includes("Untitled")) {
+    if (debug) Logger.log("Searching Sheet for: %s", title);
+    textFinder = ss.createTextFinder(title);
+    position = textFinder.findNext();
+    if (position != null) {
+      Logger.log("Deleting Sheet entry for " + title);
+      sheet.deleteRow(position.getRow());
+    }
+    else if (debug) Logger.log("Sheet entry doesn't exist: %s", title);
   }
 }
 
 function createSheetEntry(title, author, link) {
   if (firstWeekOfMonth) {
     //if publication date is missing and it's first week of the month/running in debug mode, add the book link to the sheet.
-    textFinder = ss.createTextFinder(title);
+    textFinder = ss.createTextFinder(link);
     if (textFinder.findNext() == null) {
-      if (debug)
-        Logger.log("Creating Sheet entry for " + title + " - " + author);
+      Logger.log("Creating Sheet entry for " + title + " - " + author);
       sheet.appendRow([title, author, link]);
       sheet.getRange("D" + sheet.getLastRow()).insertCheckboxes();
-    }
+    } else if (debug)
+        Logger.log("Sheet entry exists for " + title + " - " + author);
   }
 }
 
 function getBooks(response) {
-  // var response = fetchGoodreadsData();
+  // let response = fetchGoodreadsData();
   // API Connection Successful
   if (response.getResponseCode() === 200) {
     // Parse XML Response
-    var results = XmlService.parse(response.getContentText())
+    let results = XmlService.parse(response.getContentText())
       .getRootElement()
       .getChildren("reviews")[0];
 
     results.getChildren().forEach(function (result) {
-      result.getChildren("book").forEach(checkFutureRelease);
+      result.getChildren("book").forEach(checkData);
     });
   } else {
     Logger.log("API request error");
@@ -113,7 +127,7 @@ function getBooks(response) {
 }
 
 function main() {
-  var apiKey = "1LNBP3nLDvPJoY3trbJw1w",
+  let apiKey = "1LNBP3nLDvPJoY3trbJw1w",
     payload = {
       id: 7795126,
       shelf: "to-read",
@@ -132,15 +146,17 @@ function main() {
   getBooks(fetchGoodreadsData(params));
   if (today.getDate() < 7 || debug) {
     payload.sort = "date_pub";
-    payload.per_page = 150;
+    // payload.page = 2;
+    payload.per_page = 180;
     firstWeekOfMonth = true;
     getBooks(fetchGoodreadsData(params));
+    if (today.getMonth() % 2 == 0) updateCalendarEvents();
   }
-  if (today.getMonth() % 2 == 0) updateCalendarEvents();
 }
 
 function updateCalendarEvents() {
-  var calendarId = "primary",
+  Logger.log("Running updateCalendarEvents...");
+  let calendarId = "primary",
     optionalArgs = {
       timeMin: new Date().toISOString(),
       showDeleted: false,
@@ -152,12 +168,12 @@ function updateCalendarEvents() {
   //modified the same script to shift URLs from description to location
   //modified the same script to change no details, just run once in every 2 months to handle the case of disappearing events
   optionalArgs.q = "goodreads";
-  var response = Calendar.Events.list(calendarId, optionalArgs);
-  var events = response.items;
+  let response = Calendar.Events.list(calendarId, optionalArgs);
+  let events = response.items;
   if (events.length > 0) {
     for (i = 0; i < events.length; i++) {
-      var event = events[i];
-      Logger.log(event.summary);
+      let event = events[i];
+//      Logger.log(event.summary);
       //      Logger.log(event);
       //      if (event.description != null){
       //        Logger.log(event.summary);
